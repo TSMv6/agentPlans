@@ -279,8 +279,14 @@ void run_stage_eltod(const Settings& s, const Lookups& lk, Rng& rng,
         long long ext_counter = 0;
         for (const auto& t : ldt_trips) {
             int trPurpose = t.trPurpose;
-            // crossborder (DMA 10 <-> internal) employer-business -> commute
-            bool cb = (t.org_DMA == 10 && t.des_DMA < 10) || (t.org_DMA < 10 && t.des_DMA == 10);
+            // crossborder (DMA 10 <-> border-adjacent northern FL) employer-business
+            // -> commute. Restricted to northern DMAs (1=Northwest, 2=North Central,
+            // 3=Northeast) so a Central/South-FL business tour to GA/AL stays a
+            // long-distance business trip instead of being relabeled a commute and
+            // routed up I-75/Turnpike to Tampa.
+            auto north_dma = [](int d) { return d == 1 || d == 2 || d == 3; };
+            bool cb = (t.org_DMA == 10 && north_dma(t.des_DMA)) ||
+                      (north_dma(t.org_DMA) && t.des_DMA == 10);
             if (cb && trPurpose == 5) trPurpose = 4;
             std::string purpose = purpose_ldt(trPurpose);
 
@@ -392,15 +398,24 @@ void run_stage_eltod(const Settings& s, const Lookups& lk, Rng& rng,
             if (targets.count(r.O)) modeled[r.O] += r.vehTrips;
             if (r.D != r.O && targets.count(r.D)) modeled[r.D] += r.vehTrips;
         }
-        // Per-zone scale = target / modeled.
+        // Per-zone scale = target / modeled, capped. Minor crossings carry mostly
+        // local (<50 mi) traffic the long-distance model does not generate, so a
+        // handful of modeled LD trips there would otherwise be amplified 20-100x to
+        // hit the full count — injecting noise. Cap the up-scale (default 5x); the
+        // uncovered remainder is local traffic that belongs to a separate model.
+        const double MAX_UP = 5.0;
         std::unordered_map<long long, double> scale;
         for (const auto& kv : targets) {
             double tgt = resolve_target(kv.second, s.year, s.external_base_year);
             double mod = modeled.count(kv.first) ? modeled[kv.first] : 0.0;
             double sc = mod > 0 ? tgt / mod : 1.0;
+            bool capped = false;
+            if (sc > MAX_UP) { sc = MAX_UP; capped = true; }
             scale[kv.first] = sc;
-            std::printf("[eltod] external %lld: target=%.0f modeled=%.0f scale=%.4f%s\n",
-                        kv.first, tgt, mod, sc, mod > 0 ? "" : "  (no modeled trips!)");
+            std::printf("[eltod] external %lld: target=%.0f modeled=%.0f scale=%.4f%s%s\n",
+                        kv.first, tgt, mod, sc,
+                        mod > 0 ? "" : "  (no modeled trips!)",
+                        capped ? "  (capped)" : "");
         }
         ScaleFn factor = [scale](long long o, long long d) {
             double f = 1.0;

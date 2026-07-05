@@ -8,6 +8,10 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
+# Statically link the MSVC C/C++ runtime so the distributed exe needs no Visual
+# Studio redistributable DLLs (MSVCP140/VCRUNTIME140/…). Self-contained binary.
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
 if(MSVC)
   add_compile_options(/utf-8 /W3)
   add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
