@@ -302,17 +302,14 @@ void run_stage_eltod(const Settings& s, const Lookups& lk, Rng& rng,
         long long ext_counter = 0;
         for (const auto& t : ldt_trips) {
             int trPurpose = t.trPurpose;
-            // A true cross-border commute is a GA/AL (DMA 10) <-> FL trip whose FL
-            // end lies within 50 mi of the border (border_zones). For those, relabel
-            // border EmployerBusiness as a commute (for time-of-day/routing) and tag
-            // BOTH border commute and border business as "CrossBorderCommute". Native
-            // long-distance commutes elsewhere stay "Commute" (they originate
-            // statewide -- Orange, Hillsborough, etc. -- and must not be confined to
-            // or routed via the northern border); Central/South-FL business trips to
-            // GA/AL stay "EmployerBusiness" instead of being routed up I-75 to Tampa.
+            // A cross-border COMMUTE is a GA/AL (DMA 10) <-> FL trip whose FL end is
+            // within 50 mi of the border (border_zones) AND whose purpose is commute
+            // (native LDT purpose 4). EmployerBusiness (5) is a DIFFERENT purpose and
+            // is NOT relabeled to commute -- a cross-border business trip stays
+            // "EmployerBusiness". Native long-distance commutes elsewhere stay
+            // "Commute" (they originate statewide -- Orange, Hillsborough, etc.).
             bool cb = (t.org_DMA == 10 && border_zones.count(t.dtaz)) ||
                       (t.des_DMA == 10 && border_zones.count(t.otaz));
-            if (cb && trPurpose == 5) trPurpose = 4;
             std::string purpose = (cb && trPurpose == 4) ? "CrossBorderCommute"
                                                          : purpose_ldt(trPurpose);
 
