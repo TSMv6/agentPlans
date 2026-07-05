@@ -176,14 +176,18 @@ void run_stage_eltod(const Settings& s, const Lookups& lk, Rng& rng,
     };
 
     // Bring an SDT period onto the internal 15-min segment grid (1..96) per the
-    // declared SDT native resolution. 30-min periods are split into a 15-min
-    // sub-segment; 15-min periods pass through; unknown (0) is uniform over the day.
+    // declared SDT native resolution. SDT trip lists store 0-BASED slots
+    // (0 = midnight bin; settings.h "periods 0..47", SDTModel OutputWriter):
+    // 30-min slot p covers clock [p*30, (p+1)*30) and maps to segments
+    // 2p+1 / 2p+2. Out-of-range values fall back to uniform over the day.
+    // (The previous 1-based read shifted every SDT trip 30 minutes early and
+    // scattered the midnight bin uniformly across the day.)
     auto recode_seg = [&](int period) -> int {
         if (s.sdt_input_resolution == 15)
-            return (period >= 1 && period <= 96) ? period : rng.uniform_int(1, 96);
-        if (period >= 1 && period <= 48)
-            return rng.uniform_int(0, 1) ? 2 * period : 2 * period - 1;
-        return rng.uniform_int(1, 96);  // period 0: uniform over the day
+            return (period >= 0 && period <= 95) ? period + 1 : rng.uniform_int(1, 96);
+        if (period >= 0 && period <= 47)
+            return rng.uniform_int(0, 1) ? 2 * period + 2 : 2 * period + 1;
+        return rng.uniform_int(1, 96);  // corrupt/unknown: uniform over the day
     };
 
     auto process_sdt = [&](const std::string& file, bool resident) {
