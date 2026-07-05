@@ -269,26 +269,33 @@ void run_stage_eltod(const Settings& s, const Lookups& lk, Rng& rng,
     {
         bool need_skim = s.track_AirTours || s.track_sdt_grt50M;
         if (need_skim) const_cast<Lookups&>(lk).load_skim(s);
+        // Native LDT purpose 4 is a long-distance COMMUTE (statewide). It is NOT
+        // inherently cross-border; only GA/AL<->northern-FL trips are. See the cb
+        // override below.
         auto purpose_ldt = [](int p) -> std::string {
             switch (p) {
                 case 1: return "PersonalBusiness"; case 2: return "VistFriendFamily";
-                case 3: return "LeisureVacation"; case 4: return "CrossBorderCommute";
+                case 3: return "LeisureVacation"; case 4: return "Commute";
                 case 5: return "EmployerBusiness"; default: return "None";
             }
         };
         long long ext_counter = 0;
         for (const auto& t : ldt_trips) {
             int trPurpose = t.trPurpose;
-            // crossborder (DMA 10 <-> border-adjacent northern FL) employer-business
-            // -> commute. Restricted to northern DMAs (1=Northwest, 2=North Central,
-            // 3=Northeast) so a Central/South-FL business tour to GA/AL stays a
-            // long-distance business trip instead of being relabeled a commute and
-            // routed up I-75/Turnpike to Tampa.
+            // A true cross-border commute is a GA/AL (DMA 10) <-> border-adjacent
+            // northern-FL (DMA 1 NW, 2 N-Central, 3 NE) trip. For those, relabel
+            // border EmployerBusiness as a commute (for time-of-day/routing) and
+            // tag BOTH border commute and border business as "CrossBorderCommute".
+            // Native long-distance commutes elsewhere stay "Commute" (they
+            // originate statewide and must not be confined to / routed via the
+            // northern border), and Central/South-FL business trips to GA/AL stay
+            // "EmployerBusiness" instead of being routed up I-75/Turnpike to Tampa.
             auto north_dma = [](int d) { return d == 1 || d == 2 || d == 3; };
             bool cb = (t.org_DMA == 10 && north_dma(t.des_DMA)) ||
                       (north_dma(t.org_DMA) && t.des_DMA == 10);
             if (cb && trPurpose == 5) trPurpose = 4;
-            std::string purpose = purpose_ldt(trPurpose);
+            std::string purpose = (cb && trPurpose == 4) ? "CrossBorderCommute"
+                                                         : purpose_ldt(trPurpose);
 
             std::string seg = t.vot;  // 6-class from stage A
             if (s.track_AirTours && t.trMode == 4) {
