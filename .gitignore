@@ -10,3 +10,6 @@ build/
 
 # generated trip-list / OD outputs from smoke tests
 /test/scen/ELTOD_*
+
+# local static build dir
+build_static/
