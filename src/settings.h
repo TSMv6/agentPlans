@@ -54,6 +54,10 @@ struct Settings {
     std::string ldt_external_targets; // default: scenario_dir/ldt_external_targets.csv
     std::string external_base_counts; // optional base-count override (plugin config)
     int external_base_year = 2024;
+    // FL TAZs within 50 mi of the GA/AL border (one 'taz' column). A GA/AL(DMA 10)
+    // <-> FL LDT trip is tagged "CrossBorderCommute" only when its FL end is in
+    // this set; otherwise native long-distance commutes stay "Commute".
+    std::string ldt_border_zones;     // default: scenario_dir/border_zones_50mi.csv
     bool apply_external_targets = true;
 
     // External-station TAZ ids used for LDT origin-state assignment. Keep these

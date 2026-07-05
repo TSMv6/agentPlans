@@ -97,6 +97,7 @@ Settings Settings::load(const std::string& control_file) {
     B("write_hourly_table", s.write_hourly_table);
 
     S("ldt_external_targets", s.ldt_external_targets);
+    S("ldt_border_zones", s.ldt_border_zones);
     S("external_base_counts", s.external_base_counts);
     I("external_base_year", s.external_base_year);
     B("apply_external_targets", s.apply_external_targets);

@@ -11,6 +11,7 @@
 #include <set>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "util/csv.h"
 #include "util/gz_io.h"
@@ -269,6 +270,25 @@ void run_stage_eltod(const Settings& s, const Lookups& lk, Rng& rng,
     {
         bool need_skim = s.track_AirTours || s.track_sdt_grt50M;
         if (need_skim) const_cast<Lookups&>(lk).load_skim(s);
+
+        // FL TAZs within 50 mi of the GA/AL border. A GA/AL(DMA 10)<->FL trip is a
+        // CrossBorderCommute only when its FL end is in this set (not just any
+        // northern DMA, which reaches 100+ mi south). Empty set => no trip is
+        // tagged CrossBorderCommute (all native commutes stay "Commute").
+        std::unordered_set<long long> border_zones;
+        {
+            std::string bf = s.scen(s.ldt_border_zones, "border_zones_50mi.csv");
+            if (file_exists(bf)) {
+                CsvTable bt = load_csv(bf);
+                int cz = bt.require("taz", bf);
+                for (size_t r = 0; r < bt.size(); ++r) border_zones.insert(bt.ll(r, cz));
+                std::printf("[eltod] CrossBorderCommute: %zu FL zones <=50mi of border\n",
+                            border_zones.size());
+            } else {
+                std::printf("[eltod] WARNING: border-zones file not found (%s); "
+                            "no trips tagged CrossBorderCommute\n", bf.c_str());
+            }
+        }
         // Native LDT purpose 4 is a long-distance COMMUTE (statewide). It is NOT
         // inherently cross-border; only GA/AL<->northern-FL trips are. See the cb
         // override below.
@@ -282,17 +302,16 @@ void run_stage_eltod(const Settings& s, const Lookups& lk, Rng& rng,
         long long ext_counter = 0;
         for (const auto& t : ldt_trips) {
             int trPurpose = t.trPurpose;
-            // A true cross-border commute is a GA/AL (DMA 10) <-> border-adjacent
-            // northern-FL (DMA 1 NW, 2 N-Central, 3 NE) trip. For those, relabel
-            // border EmployerBusiness as a commute (for time-of-day/routing) and
-            // tag BOTH border commute and border business as "CrossBorderCommute".
-            // Native long-distance commutes elsewhere stay "Commute" (they
-            // originate statewide and must not be confined to / routed via the
-            // northern border), and Central/South-FL business trips to GA/AL stay
-            // "EmployerBusiness" instead of being routed up I-75/Turnpike to Tampa.
-            auto north_dma = [](int d) { return d == 1 || d == 2 || d == 3; };
-            bool cb = (t.org_DMA == 10 && north_dma(t.des_DMA)) ||
-                      (north_dma(t.org_DMA) && t.des_DMA == 10);
+            // A true cross-border commute is a GA/AL (DMA 10) <-> FL trip whose FL
+            // end lies within 50 mi of the border (border_zones). For those, relabel
+            // border EmployerBusiness as a commute (for time-of-day/routing) and tag
+            // BOTH border commute and border business as "CrossBorderCommute". Native
+            // long-distance commutes elsewhere stay "Commute" (they originate
+            // statewide -- Orange, Hillsborough, etc. -- and must not be confined to
+            // or routed via the northern border); Central/South-FL business trips to
+            // GA/AL stay "EmployerBusiness" instead of being routed up I-75 to Tampa.
+            bool cb = (t.org_DMA == 10 && border_zones.count(t.dtaz)) ||
+                      (t.des_DMA == 10 && border_zones.count(t.otaz));
             if (cb && trPurpose == 5) trPurpose = 4;
             std::string purpose = (cb && trPurpose == 4) ? "CrossBorderCommute"
                                                          : purpose_ldt(trPurpose);
