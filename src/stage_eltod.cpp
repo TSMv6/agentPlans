@@ -52,6 +52,18 @@ struct ODTable {
             if (f != 1.0) for (auto& sc : kv.second) sc.second *= f;
         }
     }
+    // Segment-aware variant: markets are the segments, so per-market external
+    // scaling (OS vs FL cross-border) stays exact in the hourly OD table.
+    void apply_scale_seg(const std::function<double(long long, long long,
+                                                    const std::string&)>& factor) {
+        for (auto& kv : cells) {
+            long long o = std::get<1>(kv.first), d = std::get<2>(kv.first);
+            for (auto& sc : kv.second) {
+                double f = factor(o, d, sc.first);
+                if (f != 1.0) sc.second *= f;
+            }
+        }
+    }
     void write_csv(const std::string& path, bool hourclock) const {
         std::ofstream out(path);
         out << (hourclock ? "STARTTIME" : "period") << ",O,D";
@@ -415,39 +427,78 @@ void run_stage_eltod(const Settings& s, const Lookups& lk, Rng& rng,
                     if (it != targets.end()) { it->second.base_count = b.num(r, bc); it->second.has_base = true; }
                 }
         }
-        // Modeled volume per external zone, from the unscaled trip list.
-        std::unordered_map<long long, double> modeled;
+        // Market-split scaling.
+        //  - Interstate stations (I-10/I-75/I-95): the count target is matched by
+        //    the LDT OS market alone (out-of-state households, LDT_Vis_* segments,
+        //    both directions from the tour flip). FL-resident trips through the
+        //    big three ride on top unscaled (small, organic from the DMA-to-DMA
+        //    constants).
+        //  - All other stations: the target is matched by the FL cross-border
+        //    market (AL/GA <-> FL within the 50-mi border band; LDT_Res_* segments
+        //    incl. relabeled CrossBorderCommute). OS trips there stay unscaled.
+        // Only LDT rows participate; SDT and truck rows are never touched.
+        auto is_ldt = [](const ListRow& r) { return r.market.rfind("LDT", 0) == 0; };
+        auto is_os  = [](const ListRow& r) { return r.marketVot.rfind("LDT_Vis", 0) == 0; };
+        const std::set<long long> interstate_ext = {s.ext_station_i10, s.ext_station_i75,
+                                                    s.ext_station_i95};
+        // Modeled volume per external zone by market bucket, from the unscaled list.
+        // mod_other = non-LDT rows serving the station (ODME trucks; they are
+        // count-calibrated and never scaled here) — netted out of the target so
+        // the station TOTAL, not LDT alone, matches the count.
+        std::unordered_map<long long, double> mod_os, mod_fl, mod_other;
         for (const auto& r : list) {
-            if (targets.count(r.O)) modeled[r.O] += r.vehTrips;
-            if (r.D != r.O && targets.count(r.D)) modeled[r.D] += r.vehTrips;
+            auto& m = !is_ldt(r) ? mod_other : (is_os(r) ? mod_os : mod_fl);
+            if (targets.count(r.O)) m[r.O] += r.vehTrips;
+            if (r.D != r.O && targets.count(r.D)) m[r.D] += r.vehTrips;
         }
-        // Per-zone scale = target / modeled, capped. Minor crossings carry mostly
-        // local (<50 mi) traffic the long-distance model does not generate, so a
-        // handful of modeled LD trips there would otherwise be amplified 20-100x to
-        // hit the full count — injecting noise. Cap the up-scale (default 5x); the
-        // uncovered remainder is local traffic that belongs to a separate model.
+        // Per-zone scale = target / bucket-modeled, capped. Minor crossings carry
+        // mostly local (<50 mi) traffic the long-distance model does not generate,
+        // so a handful of modeled LD trips there would otherwise be amplified
+        // 20-100x to hit the full count — injecting noise. Cap the up-scale
+        // (default 5x); the uncovered remainder is local traffic that belongs to a
+        // separate model.
         const double MAX_UP = 5.0;
-        std::unordered_map<long long, double> scale;
+        std::unordered_map<long long, double> scale_os, scale_fl;
         for (const auto& kv : targets) {
+            bool inter = interstate_ext.count(kv.first) > 0;
             double tgt = resolve_target(kv.second, s.year, s.external_base_year);
-            double mod = modeled.count(kv.first) ? modeled[kv.first] : 0.0;
-            double sc = mod > 0 ? tgt / mod : 1.0;
+            auto gv = [&](std::unordered_map<long long, double>& m) {
+                auto it = m.find(kv.first); return it == m.end() ? 0.0 : it->second;
+            };
+            // Residual fill: the anchored bucket closes the gap to the count after
+            // trucks (always) and the other LDT bucket (unscaled at this station
+            // class) are netted out. Station TOTAL = target.
+            double other = gv(mod_other) + (inter ? gv(mod_fl) : gv(mod_os));
+            double eff_tgt = tgt - other; if (eff_tgt < 0) eff_tgt = 0;
+            double mod = inter ? gv(mod_os) : gv(mod_fl);
+            double sc = mod > 0 ? eff_tgt / mod : 1.0;
             bool capped = false;
             if (sc > MAX_UP) { sc = MAX_UP; capped = true; }
-            scale[kv.first] = sc;
-            std::printf("[eltod] external %lld: target=%.0f modeled=%.0f scale=%.4f%s%s\n",
-                        kv.first, tgt, mod, sc,
+            (inter ? scale_os : scale_fl)[kv.first] = sc;
+            std::printf("[eltod] external %lld (%s): target=%.0f other=%.0f eff_target=%.0f "
+                        "modeled=%.0f scale=%.4f%s%s\n",
+                        kv.first, inter ? "OS/interstate" : "FL/cross-border", tgt, other,
+                        eff_tgt, mod, sc,
                         mod > 0 ? "" : "  (no modeled trips!)",
                         capped ? "  (capped)" : "");
         }
-        ScaleFn factor = [scale](long long o, long long d) {
+        auto zone_factor = [](const std::unordered_map<long long, double>& sm,
+                              long long o, long long d) {
             double f = 1.0;
-            auto io = scale.find(o); if (io != scale.end()) f *= io->second;
-            if (d != o) { auto id = scale.find(d); if (id != scale.end()) f *= id->second; }
+            auto io = sm.find(o); if (io != sm.end()) f *= io->second;
+            if (d != o) { auto id = sm.find(d); if (id != sm.end()) f *= id->second; }
             return f;
         };
-        for (auto& r : list) { double f = factor(r.O, r.D); if (f != 1.0) r.vehTrips *= f; }
-        od.apply_scale(factor);
+        for (auto& r : list) {
+            if (!is_ldt(r)) continue;
+            double f = zone_factor(is_os(r) ? scale_os : scale_fl, r.O, r.D);
+            if (f != 1.0) r.vehTrips *= f;
+        }
+        // OD table: segments are markets, so the split is exact there too.
+        od.apply_scale_seg([&](long long o, long long d, const std::string& seg) {
+            if (seg.rfind("LDT", 0) != 0) return 1.0;
+            return zone_factor(seg.rfind("LDT_Vis", 0) == 0 ? scale_os : scale_fl, o, d);
+        });
     } else {
         std::printf("[eltod] external target scaling skipped (%s)\n",
                     s.apply_external_targets ? ("not found: " + ext_file).c_str() : "disabled");
