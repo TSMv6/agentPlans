@@ -72,6 +72,11 @@ struct Settings {
                                       // wide by market/VOT with STARTTIME HH:00 -- matches
                                       // the original R 3_get_ELTOD output.
     bool write_hourly_table = true;   // also emit the hourly OD trip table
+    // ELTOD_SDT_Res_hourly.csv: a resident purpose*VOT OD table that was only
+    // ever used for calibration. Everything in it can be rebuilt from the
+    // gzipped trip list, so it is no longer written by default -- building it
+    // also costs a full second ODTable over ~48M resident trips.
+    bool write_sdt_res_hourly = false;
 
     // --- toggles: stage ldt (script 2) ---
     bool apply_originState_based_externals = true;

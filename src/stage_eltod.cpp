@@ -260,9 +260,13 @@ void run_stage_eltod(const Settings& s, const Lookups& lk, Rng& rng,
             if (resident) {
                 r.hh_id = to_ll(G(cHh)); r.person_id = to_ll(G(cPer));
                 r.tour_id = to_ll(G(cTour)); r.trip_id = to_ll(G(cTrip));
-                // SDT resident purpose*VOT OD (output_SDT_Res_hourly)
-                std::string pv = vot_class(vt, lo, hi, purpose.c_str());
-                sdt_res_od.add(hr, o, d, pv, veh);
+                // SDT resident purpose*VOT OD (output_SDT_Res_hourly).
+                // Off by default -- skipping it avoids building a second
+                // ODTable across every resident trip, not just the write.
+                if (s.write_sdt_res_hourly) {
+                    std::string pv = vot_class(vt, lo, hi, purpose.c_str());
+                    sdt_res_od.add(hr, o, d, pv, veh);
+                }
             } else {
                 r.hh_id = MIN_HHID + (++vis_counter);
                 r.person_id = 1;
@@ -530,9 +534,13 @@ void run_stage_eltod(const Settings& s, const Lookups& lk, Rng& rng,
         std::printf("[eltod] wrote hourly OD trip table -> %s\n", out_od.c_str());
     }
 
-    const std::string out_sdt = s.scen("", "ELTOD_SDT_Res_hourly.csv");
-    sdt_res_od.write_csv(out_sdt, false);
-    std::printf("[eltod] wrote SDT resident OD -> %s\n", out_sdt.c_str());
+    // Resident purpose*VOT OD. Calibration-only, and derivable from the trip
+    // list below, so it is written just on request (write_sdt_res_hourly).
+    if (s.write_sdt_res_hourly) {
+        const std::string out_sdt = s.scen("", "ELTOD_SDT_Res_hourly.csv");
+        sdt_res_od.write_csv(out_sdt, false);
+        std::printf("[eltod] wrote SDT resident OD -> %s\n", out_sdt.c_str());
+    }
 
     // Hydra-schema gzipped trip list.
     const std::string out_list = s.scen(s.trip_table_out, "ELTOD_tt_List_hourly.csv.gz");

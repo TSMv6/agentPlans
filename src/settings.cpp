@@ -95,6 +95,7 @@ Settings Settings::load(const std::string& control_file) {
     S("trip_table_out", s.trip_table_out);
     S("hourly_table_out", s.hourly_table_out);
     B("write_hourly_table", s.write_hourly_table);
+    B("write_sdt_res_hourly", s.write_sdt_res_hourly);
 
     S("ldt_external_targets", s.ldt_external_targets);
     S("ldt_border_zones", s.ldt_border_zones);
