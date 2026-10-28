@@ -90,6 +90,23 @@ Maps an internal TAZ to its crossborder external station (used when
 | `TAZ`      | int  | internal origin TAZ |
 | `CBM_Ext`  | int  | external-station TAZ for that origin |
 
+### 1e. `OutofState_to_ExternalStations_Mapping.csv` (key `os_state_externals`)
+
+Entry station for visitor (EI) auto tours by origin state, used when
+`apply_originState_based_externals = true`. Replaces the state lists that were
+hardcoded in the R script and in stage_ldt.cpp. A row with `ZoneID` set overrides
+its state's row for that origin zone (none today; the table equals the R lists). A state missing
+from the table enters on I-95 and is reported in the log.
+
+| column       | type | meaning |
+|--------------|------|---------|
+| `StateFIPS`  | int  | origin state FIPS (`trOState`) |
+| `State`      | str  | postal code (documentation only) |
+| `ZoneID`     | int  | blank = whole state; set = this LDT origin zone (`trOZone`) only |
+| `Interstate` | str  | I-10 / I-75 / I-95 (documentation only) |
+| `ExtStation` | int  | external-station TAZ (11504 / 11548 / 11560) |
+| `Note`       | str  | why the row differs from the original R lists |
+
 ---
 
 ## 2. Files that are already CSV (used as-is)

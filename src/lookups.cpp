@@ -1,6 +1,7 @@
 #include "lookups.h"
 
 #include <cstdio>
+#include <stdexcept>
 
 #include "util/csv.h"
 
@@ -70,6 +71,23 @@ void Lookups::load_cbm_ext(const Settings& s) {
     int cT = t.require("TAZ", s.cbm_external_lookup_csv);
     int cE = t.require("CBM_Ext", s.cbm_external_lookup_csv);
     for (size_t r = 0; r < t.size(); ++r) cbm_ext[t.ll(r, cT)] = t.ll(r, cE);
+}
+
+void Lookups::load_os_state_ext(const Settings& s) {
+    if (!s.apply_originState_based_externals) return;
+    if (s.os_state_externals.empty())
+        throw std::runtime_error("apply_originState_based_externals = true needs os_state_externals "
+                                 "(OutofState_to_ExternalStations_Mapping.csv)");
+    CsvTable t = load_csv(s.os_state_externals);
+    int cS = t.require("StateFIPS", s.os_state_externals);
+    int cZ = t.require("ZoneID", s.os_state_externals);
+    int cE = t.require("ExtStation", s.os_state_externals);
+    for (size_t r = 0; r < t.size(); ++r) {
+        if (t.at(r, cZ).empty()) os_state_ext[static_cast<int>(t.ll(r, cS))] = t.ll(r, cE);
+        else os_zone_ext[t.ll(r, cZ)] = t.ll(r, cE);
+    }
+    std::printf("[lookups] OS entry stations: %zu states, %zu zone overrides\n",
+                os_state_ext.size(), os_zone_ext.size());
 }
 
 void Lookups::load_tod(const Settings& s) {

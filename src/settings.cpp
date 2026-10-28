@@ -83,6 +83,7 @@ Settings Settings::load(const std::string& control_file) {
     S("tod_distributions", s.tod_distributions);
     S("ga_al_destinations", s.ga_al_destinations);
     S("cbm_external_lookup", s.cbm_external_lookup_csv);
+    S("os_state_externals", s.os_state_externals);
 
     S("taz_dma", s.taz_dma);
     S("distance_skim", s.distance_skim);

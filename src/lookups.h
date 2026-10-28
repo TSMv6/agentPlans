@@ -38,6 +38,17 @@ struct Lookups {
     // CBM external lookup: internal TAZ -> external-station TAZ.
     std::unordered_map<long long, long long> cbm_ext;
 
+    // Visitor (EI) auto entry station by origin: a ZoneID row overrides its
+    // state's row (OutofState_to_ExternalStations_Mapping.csv).
+    std::unordered_map<int, long long> os_state_ext;
+    std::unordered_map<long long, long long> os_zone_ext;
+    long long os_entry_station(int state, long long zone) const {
+        auto z = os_zone_ext.find(zone);
+        if (z != os_zone_ext.end()) return z->second;
+        auto st = os_state_ext.find(state);
+        return st == os_state_ext.end() ? 0 : st->second;
+    }
+
     ToD tod;
 
     // Round-trip distance skim: (O,D) -> miles. Loaded only when needed.
@@ -61,6 +72,7 @@ struct Lookups {
     void load_airport(const Settings& s);
     void load_cruise(const Settings& s);
     void load_cbm_ext(const Settings& s);
+    void load_os_state_ext(const Settings& s);
     void load_tod(const Settings& s);
     void load_skim(const Settings& s);
 };

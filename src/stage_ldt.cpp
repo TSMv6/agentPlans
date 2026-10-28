@@ -1,6 +1,7 @@
 #include "stage_ldt.h"
 
 #include <algorithm>
+#include <map>
 #include <cstdio>
 #include <unordered_set>
 
@@ -33,10 +34,6 @@ struct Tour {
     int period = 0;
 };
 
-const std::unordered_set<int> kStatesI10 = {1, 4, 22, 48};
-const std::unordered_set<int> kStatesI75 = {5, 35, 6, 8, 16, 17, 18, 19, 20, 21, 26,
-                                            27, 28, 29, 31, 32, 38, 39, 40, 41, 47,
-                                            49, 55, 56};
 const std::unordered_set<long long> kDisneyZones = {4232, 4235, 4589, 4590, 4592, 4594,
                                                     4607, 4610, 4611, 4620, 4621, 4632};
 constexpr long long OIA = 4657;       // Orlando Int'l (only airport with DME)
@@ -144,12 +141,18 @@ std::vector<LdtTrip> run_stage_ldt(const Settings& s, const Lookups& lk, Rng& rn
 
     // --- a) EI / IE auto external stations ---
     std::vector<Tour> ei_auto, ie_auto, cbm_auto;
+    std::map<int, size_t> unmapped_states;
     for (auto& t : tours) {
         if (t.trMode == 1 && t.type == "EI") {
             if (s.apply_originState_based_externals) {
-                t.entry_ext = kStatesI10.count(t.trOState) ? s.ext_station_i10
-                            : kStatesI75.count(t.trOState) ? s.ext_station_i75
-                                                           : s.ext_station_i95;
+                // Entry station by origin state (zone rows override), from
+                // OutofState_to_ExternalStations_Mapping.csv. A state missing
+                // from the table enters on I-95, as the R default did.
+                t.entry_ext = lk.os_entry_station(t.trOState, t.trOZone);
+                if (t.entry_ext == 0) {
+                    ++unmapped_states[t.trOState];
+                    t.entry_ext = s.ext_station_i95;
+                }
             } else {
                 t.entry_ext = ext0.values[rng.draw(ext0_disc)];
             }
@@ -176,6 +179,16 @@ std::vector<LdtTrip> run_stage_ldt(const Settings& s, const Lookups& lk, Rng& rn
                 cbm_auto.push_back(t);
             }
         }
+    }
+
+    for (const auto& kv : unmapped_states)
+        std::printf("[ldt] WARNING: origin state %d not in os_state_externals -> I-95 (%zu tours)\n",
+                    kv.first, kv.second);
+    {
+        std::map<long long, size_t> by_station;
+        for (const auto& t : ei_auto) ++by_station[t.entry_ext];
+        for (const auto& kv : by_station)
+            std::printf("[ldt] EI auto entry station %lld: %zu tours\n", kv.first, kv.second);
     }
 
     // --- 3. Airport TAZ + access/egress mode for air tours, by DMA 1..9 ---

@@ -42,6 +42,7 @@ int main(int argc, char** argv) {
         lk.load_airport(s);
         lk.load_cruise(s);
         lk.load_cbm_ext(s);
+        lk.load_os_state_ext(s);
         lk.load_tod(s);
         std::printf("[agentPlans] lookups loaded\n");
 

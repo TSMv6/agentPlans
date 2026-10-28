@@ -35,6 +35,7 @@ struct Settings {
     std::string tod_distributions;        // tod_distributions.csv
     std::string ga_al_destinations;       // ga_al_ldt_destinations.csv
     std::string cbm_external_lookup_csv;  // cbm_external_lookup.csv
+    std::string os_state_externals;       // OutofState_to_ExternalStations_Mapping.csv
 
     // --- already-CSV inputs ---
     std::string taz_dma;              // Florida_Zones_appended_STL_TSMv4.csv (TAZ,DMA)

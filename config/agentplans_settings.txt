@@ -25,6 +25,7 @@ canaveral_cruise     = C:/TSM_NextGen_v6/Inputs/external_counts/canaveral_cruise
 tod_distributions    = C:/TSM_NextGen_v6/Inputs/tod/tod_distributions.csv
 ga_al_destinations   = C:/TSM_NextGen_v6/Inputs/external_counts/ga_al_ldt_destinations.csv
 cbm_external_lookup  = C:/TSM_NextGen_v6/Inputs/external_counts/cbm_external_lookup.csv
+os_state_externals   = C:/TSM_NextGen_v6/Inputs/external_counts/OutofState_to_ExternalStations_Mapping.csv
 
 # --- already-CSV inputs ---
 taz_dma       = C:/TSM_NextGen_v6/Inputs/zone_shapeFiles/Florida_Zones_appended_STL_TSMv4.csv
